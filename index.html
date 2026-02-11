@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>rivalizer boi</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Roboto, Arial; padding: 24px; max-width: 800px; margin: auto; }
+    h1 { margin-bottom: 8px; }
+    .controls { margin: 16px 0; }
+    button { margin-right: 8px; padding: 8px 12px; font-size: 14px; }
+    ul { list-style: none; padding: 0; }
+    li { padding: 8px 12px; margin: 6px 0; border-radius: 6px; display:flex; align-items:center; }
+    .role { font-weight:600; margin-right: 12px; padding: 4px 8px; border-radius: 4px; color: white; font-size: 12px; }
+    .Vanguard { background:#0b5; color:#003; }
+    .Strategist { background:#06f; }
+    .Duelist { background:#f44; }
+    .note { color:#666; margin-top:8px; font-size:13px }
+  </style>
+</head>
+<body>
+  <h1>rivalizer boi</h1>
+
+  <div class="controls">
+    <button id="balancedBtn">2-2-2</button>
+    <button id="shuffleBtn">Clear</button>
+  </div>
+
+  <div id="output">
+    <ul id="resultList"></ul>
+  </div>
+
+  
+
+  <script>
+    // Roster organized by category arrays for clarity and maintenance.
+    // Roles: Vanguard (Tank), Strategist (Healer/Support), Duelist (Damage)
+    const vanguards = [
+      {name: 'Captain America', role: 'Vanguard', weight: 1},
+      {name: 'Doctor Strange', role: 'Vanguard', weight: 1},
+      {name: 'Groot', role: 'Vanguard', weight: 1},
+      {name: 'Hulk', role: 'Vanguard', weight: 1},
+      {name: 'Magneto', role: 'Vanguard', weight: 1},
+      {name: 'Peni Parker', role: 'Vanguard', weight: 1},
+      {name: 'Thor', role: 'Vanguard', weight: 1},
+      {name: 'Venom', role: 'Vanguard', weight: 1},
+      {name: 'Colossus', role: 'Vanguard', weight: 1}
+    ];
+
+    const strategists = [
+      {name: 'Adam Warlock', role: 'Strategist', weight: 1},
+      {name: 'Jeff the Land Shark', role: 'Strategist', weight: 1},
+      {name: 'Loki', role: 'Strategist', weight: 1},
+      {name: 'Luna Snow', role: 'Strategist', weight: 1},
+      {name: 'Mantis', role: 'Strategist', weight: 1},
+      {name: 'Rocket Raccoon', role: 'Strategist', weight: 1},
+      {name: 'Cloak & Dagger', role: 'Strategist', weight: 1}
+    ];
+
+    const duelists = [
+      {name: 'Black Panther', role: 'Duelist', weight: 1},
+      {name: 'Black Widow', role: 'Duelist', weight: 0.3}, // lower pick weight
+      {name: 'Hawkeye', role: 'Duelist', weight: 1},
+      {name: 'Hela', role: 'Duelist', weight: 1},
+      {name: 'Iron Man', role: 'Duelist', weight: 1},
+      {name: 'Iron Fist', role: 'Duelist', weight: 1},
+      {name: 'Magik', role: 'Duelist', weight: 1},
+      {name: 'Moon Knight', role: 'Duelist', weight: 1},
+      {name: 'Namor', role: 'Duelist', weight: 1},
+      {name: 'Psylocke', role: 'Duelist', weight: 1},
+      {name: 'Scarlet Witch', role: 'Duelist', weight: 1},
+      {name: 'Spider-Man', role: 'Duelist', weight: 1},
+      {name: 'Squirrel Girl', role: 'Duelist', weight: 1},
+      {name: 'Star-Lord', role: 'Duelist', weight: 1},
+      {name: 'Storm', role: 'Duelist', weight: 1},
+      {name: 'The Punisher', role: 'Duelist', weight: 1},
+      {name: 'Winter Soldier', role: 'Duelist', weight: 1},
+      {name: 'Wolverine', role: 'Duelist', weight: 1}
+    ];
+
+    // Combined roster used by selection functions
+    const roster = [...vanguards, ...strategists, ...duelists];
+
+    // Utility: clone array of objects
+    function cloneRoster() {
+      return roster.map(c => ({...c}));
+    }
+
+    // Weighted random pick (single) from choices (array of items with .weight)
+    // Returns index of selected item
+    function weightedIndexPick(choices) {
+      const total = choices.reduce((s, c) => s + (c.weight || 0), 0);
+      if (total <= 0) return -1;
+      let r = Math.random() * total;
+      for (let i = 0; i < choices.length; i++) {
+        r -= choices[i].weight || 0;
+        if (r <= 0) return i;
+      }
+      return choices.length - 1;
+    }
+
+    // Note: Free randomize removed — balanced mode remains.
+
+    // Balanced Randomize: tries to produce 2 of each role (Vanguard/Strategist/Duelist)
+    // Strategy:
+    //  - First pick: global weighted pick across all characters
+    //  - For subsequent picks: reduce the weight of characters whose role already has count >=2
+    //  - Continue until 6 picks. This biases selection toward roles that still need picks.
+    function balancedRandomize(n = 6) {
+      const pool = cloneRoster();
+      const picks = [];
+      const roleCounts = {Vanguard: 0, Strategist: 0, Duelist: 0};
+
+      // helper to compute effective weights based on role counts
+      function applyRoleModifiers(items) {
+        return items.map(item => {
+          const modified = {...item};
+          // If role already has 2 picks, reduce weight moderately to favor other roles.
+          // Weaker correction than before: allow some chance to still pick from capped roles.
+          if (roleCounts[item.role] >= 2) {
+            modified.weight = (modified.weight || 0) * 0.4; // weaker reduction (40% weight)
+          }
+          return modified;
+        });
+      }
+
+      // First pick: weighted across all items (Black Widow already has lower weight in base data)
+      if (pool.length > 0) {
+        const idx = weightedIndexPick(pool);
+        if (idx >= 0) {
+          const picked = pool.splice(idx, 1)[0];
+          picks.push(picked);
+          roleCounts[picked.role]++;
+        }
+      }
+
+      // remaining picks
+      while (picks.length < n && pool.length > 0) {
+        // compute modified pool with role multipliers
+        const modified = applyRoleModifiers(pool);
+        const idx = weightedIndexPick(modified);
+        if (idx < 0) break;
+        // find the real item at that index in pool
+        const picked = pool.splice(idx, 1)[0];
+        picks.push(picked);
+        roleCounts[picked.role]++;
+
+        // If we run into a situation where remaining pool is dominated by roles already capped,
+        // the small multiplier still allows picking them, avoiding infinite loops.
+      }
+
+      return picks;
+    }
+
+    // Display helper
+    function showPicks(picks) {
+      const ul = document.getElementById('resultList');
+      ul.innerHTML = '';
+      picks.forEach((p, i) => {
+        const li = document.createElement('li');
+        li.innerHTML = `<span class=\"role ${p.role}\">${p.role}</span> <span>${p.name}</span>`;
+        ul.appendChild(li);
+      });
+    }
+
+    
+
+    // Wire UI
+    document.getElementById('balancedBtn').addEventListener('click', () => {
+      const picks = balancedRandomize(6);
+      showPicks(picks);
+    });
+
+
+    document.getElementById('shuffleBtn').addEventListener('click', () => {
+      document.getElementById('resultList').innerHTML = '';
+    });
+
+    // Optional: expose functions for debugging in console
+    window._balancedRandomize = balancedRandomize;
+
+  </script>
+</body>
+</html>
